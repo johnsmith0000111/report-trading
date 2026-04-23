@@ -67,6 +67,7 @@
                 <option value="WIN">WIN</option>
                 <option value="MTG WIN">MTG WIN</option>
                 <option value="LOSS">LOSS</option>
+                <option value="OTM">OTM</option>
             </select>
             <button class="btn btn-save" onclick="addTrade()">Save Trade</button>
         </div>
@@ -107,7 +108,9 @@
 
         const amt = parseFloat(amtVal);
         const perc = parseFloat(percVal);
-        let pnl = (resVal === 'LOSS') ? -amt : (amt * (perc / 100));
+        
+        // P&L Logic: LOSS aur OTM dono negative balance create karenge
+        let pnl = (resVal === 'LOSS' || resVal === 'OTM') ? -amt : (amt * (perc / 100));
 
         const newTrade = {
             id: Date.now(),
@@ -155,7 +158,13 @@
 
         trades.forEach(t => {
             netProfit += t.pnl;
-            if(t.result.includes('WIN')) totalWins++; else totalLoss++;
+            
+            // Stats logic: Sirf WIN aur MTG WIN ko wins mein count karein
+            if(t.result === 'WIN' || t.result === 'MTG WIN') {
+                totalWins++;
+            } else {
+                totalLoss++;
+            }
 
             if (t.date !== lastDate) {
                 const dayRows = trades.filter(x => x.date === t.date);
@@ -167,12 +176,15 @@
                 lastDate = t.date;
             }
 
+            // OTM ke liye bhi red color use hoga
+            const isLoss = (t.result === 'LOSS' || t.result === 'OTM');
+
             tbody.innerHTML += `
                 <tr>
                     <td>${t.pair}</td>
                     <td>$${t.amount.toFixed(2)}</td>
                     <td>${t.payout}%</td>
-                    <td class="${t.result.includes('WIN') ? 'win-text' : 'loss-text'}">${t.result}</td>
+                    <td class="${isLoss ? 'loss-text' : 'win-text'}">${t.result}</td>
                     <td class="${t.pnl >= 0 ? 'win-text' : 'loss-text'}">${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}</td>
                     <td><button class="del-btn" onclick="deleteTrade(${t.id})">Delete</button></td>
                 </tr>`;
