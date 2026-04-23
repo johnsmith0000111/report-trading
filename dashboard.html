@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Journal Pro - Fixed</title>
+    <title>Binary Trading Journal Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -22,9 +22,10 @@
         .input-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
         input, select, button { padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
         
-        .btn { cursor: pointer; border: none; font-weight: bold; transition: 0.2s; color: white; }
+        .btn { cursor: pointer; border: none; font-weight: bold; transition: 0.2s; color: white; padding: 10px 15px; }
         .btn-save { background: var(--primary); }
-        .btn-action { background: #7f8c8d; padding: 8px 15px; margin: 0 5px; }
+        .btn-action { background: #7f8c8d; margin: 0 5px; }
+        .btn-danger { background: var(--danger); margin-left: 10px; }
         .btn:hover { opacity: 0.9; }
 
         /* Table Section */
@@ -34,6 +35,7 @@
         .day-header { background: #ecf0f1 !important; font-weight: bold; text-align: left; }
         .win-text { color: var(--success); font-weight: bold; }
         .loss-text { color: var(--danger); font-weight: bold; }
+        .del-btn { background: var(--danger); color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -49,8 +51,9 @@
 
     <div style="text-align:center; margin-bottom: 20px;">
         <button class="btn btn-action" onclick="downloadPDF()">Export PDF</button>
-        <button class="btn btn-action" onclick="exportJSON()">Backup</button>
-        <button class="btn btn-action" onclick="document.getElementById('file-input').click()">Restore</button>
+        <button class="btn btn-action" onclick="exportJSON()">Backup JSON</button>
+        <button class="btn btn-action" onclick="document.getElementById('file-input').click()">Restore Data</button>
+        <button class="btn btn-danger" onclick="clearAllData()">Clear All Data</button>
         <input type="file" id="file-input" style="display:none" onchange="importJSON(this)">
     </div>
 
@@ -77,6 +80,7 @@
                 <th>Payout</th>
                 <th>Result</th>
                 <th>P&L</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -84,10 +88,11 @@
 </div>
 
 <script>
-    // 1. Data Loading from LocalStorage
+    // Aaj ki date set karein by default
+    document.getElementById('t-date').valueAsDate = new Date();
+
     let trades = JSON.parse(localStorage.getItem('trading_v6_data')) || [];
 
-    // 2. Add Trade Function
     function addTrade() {
         const dateVal = document.getElementById('t-date').value;
         const pairVal = document.getElementById('t-pair').value;
@@ -95,25 +100,17 @@
         const percVal = document.getElementById('t-perc').value;
         const resVal = document.getElementById('t-res').value;
 
-        // Simple check
         if(!dateVal || !pairVal || !amtVal || !percVal) {
-            alert("Meharbani karke tamam khane pur karein!");
+            alert("Meharbani karke tamam details bharein!");
             return;
         }
 
         const amt = parseFloat(amtVal);
         const perc = parseFloat(percVal);
-        
-        // Calculate Profit/Loss
-        let pnl = 0;
-        if(resVal === 'LOSS') {
-            pnl = -amt;
-        } else {
-            pnl = (amt * (perc / 100));
-        }
+        let pnl = (resVal === 'LOSS') ? -amt : (amt * (perc / 100));
 
-        // Push to array
-        const newEntry = {
+        const newTrade = {
+            id: Date.now(),
             date: dateVal,
             pair: pairVal.toUpperCase(),
             amount: amt,
@@ -122,48 +119,54 @@
             pnl: pnl
         };
 
-        trades.push(newEntry);
-        
-        // Save to LocalStorage
+        trades.push(newTrade);
         localStorage.setItem('trading_v6_data', JSON.stringify(trades));
         
-        // Reset Inputs
+        // Reset pair and amount only
         document.getElementById('t-pair').value = '';
         document.getElementById('t-amt').value = '';
         
-        // Refresh View
         render();
     }
 
-    // 3. Render Table & Summary
+    function deleteTrade(id) {
+        if(confirm("Yeh trade delete kar dein?")) {
+            trades = trades.filter(t => t.id !== id);
+            localStorage.setItem('trading_v6_data', JSON.stringify(trades));
+            render();
+        }
+    }
+
+    function clearAllData() {
+        if(confirm("Kya aap saara record delete karna chahte hain?")) {
+            trades = [];
+            localStorage.removeItem('trading_v6_data');
+            render();
+        }
+    }
+
     function render() {
         const tbody = document.getElementById('table-body');
         tbody.innerHTML = '';
         
-        // Sort by Date
         trades.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-        let lastDate = '';
-        let totalWins = 0, totalLoss = 0, netProfit = 0;
+        let totalWins = 0, totalLoss = 0, netProfit = 0, lastDate = '';
 
         trades.forEach(t => {
-            // Summary Calculations
             netProfit += t.pnl;
             if(t.result.includes('WIN')) totalWins++; else totalLoss++;
 
-            // Date Separator
             if (t.date !== lastDate) {
                 const dayRows = trades.filter(x => x.date === t.date);
                 const dayPnl = dayRows.reduce((s, x) => s + x.pnl, 0);
-                
                 tbody.innerHTML += `
                     <tr class="day-header">
-                        <td colspan="5">📅 Date: ${t.date} | Daily P&L: ${dayPnl >= 0 ? '+' : ''}$${dayPnl.toFixed(2)}</td>
+                        <td colspan="6">📅 Date: ${t.date} | Daily P&L: ${dayPnl >= 0 ? '+' : ''}$${dayPnl.toFixed(2)}</td>
                     </tr>`;
                 lastDate = t.date;
             }
 
-            // Table Row
             tbody.innerHTML += `
                 <tr>
                     <td>${t.pair}</td>
@@ -171,10 +174,10 @@
                     <td>${t.payout}%</td>
                     <td class="${t.result.includes('WIN') ? 'win-text' : 'loss-text'}">${t.result}</td>
                     <td class="${t.pnl >= 0 ? 'win-text' : 'loss-text'}">${t.pnl >= 0 ? '+' : ''}$${t.pnl.toFixed(2)}</td>
+                    <td><button class="del-btn" onclick="deleteTrade(${t.id})">Delete</button></td>
                 </tr>`;
         });
 
-        // Update Summary Cards
         document.getElementById('sum-total').innerText = trades.length;
         document.getElementById('sum-wins').innerText = totalWins;
         document.getElementById('sum-loss').innerText = totalLoss;
@@ -182,12 +185,11 @@
         document.getElementById('sum-net').className = netProfit >= 0 ? 'win-text' : 'loss-text';
     }
 
-    // 4. Utility Functions
+    // Export/Import
     function exportJSON() {
         const blob = new Blob([JSON.stringify(trades)], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = "trading_backup.json"; a.click();
+        a.href = URL.createObjectURL(blob); a.download = "trading_backup.json"; a.click();
     }
 
     function importJSON(input) {
@@ -203,14 +205,12 @@
     function downloadPDF() {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
-        doc.text("Monthly Trading Report", 14, 15);
+        doc.text("Trading Report", 14, 15);
         doc.autoTable({ html: '#trade-table', startY: 25, theme: 'grid' });
         doc.save("Trading_Report.pdf");
     }
 
-    // Initial Load
     window.onload = render;
 </script>
-
 </body>
 </html>
